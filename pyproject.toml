@@ -1,0 +1,29 @@
+[project]
+name = "takopi-acp-engine"
+version = "0.1.0"
+description = "Takopi engine plugin for Factory Droid ACP mode."
+requires-python = ">=3.14"
+dependencies = [
+  "takopi>=0.21.0",
+]
+
+[project.entry-points."takopi.engine_backends"]
+droid = "takopi_acp_engine.backend:BACKEND"
+
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[dependency-groups]
+dev = [
+  "pytest>=9.0.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
