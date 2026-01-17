@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from dataclasses import dataclass
 from typing import Any
 
@@ -11,6 +12,7 @@ from anyio.streams.buffered import BufferedByteReceiveStream
 from takopi.logging import get_logger
 from takopi.model import Action, ActionEvent, CompletedEvent, ResumeToken, StartedEvent
 from takopi.runner import JsonlRunState, JsonlSubprocessRunner, ResumeTokenMixin
+from takopi.utils.paths import get_run_base_dir
 
 from .settings import DroidConfig
 
@@ -63,6 +65,25 @@ class AcpRunner(ResumeTokenMixin, JsonlSubprocessRunner):
             args += ["--disabled-tools", ",".join(self.config.disabled_tools)]
         if self.config.cwd:
             args += ["--cwd", self.config.cwd]
+        return args
+
+    def _build_text_args(self, prompt: str, resume: ResumeToken | None) -> list[str]:
+        args = ["exec"]
+        if self.config.model:
+            args += ["--model", self.config.model]
+        if self.config.reasoning_effort:
+            args += ["--reasoning-effort", self.config.reasoning_effort]
+        if self.config.auto:
+            args += ["--auto", self.config.auto]
+        if self.config.enabled_tools:
+            args += ["--enabled-tools", ",".join(self.config.enabled_tools)]
+        if self.config.disabled_tools:
+            args += ["--disabled-tools", ",".join(self.config.disabled_tools)]
+        if self.config.cwd:
+            args += ["--cwd", self.config.cwd]
+        if resume is not None:
+            args += ["--session-id", resume.value]
+        args.append(prompt)
         return args
 
     def stdin_payload(
@@ -335,3 +356,49 @@ class AcpRunner(ResumeTokenMixin, JsonlSubprocessRunner):
             message=message if isinstance(message, str) else None,
             level="info",
         )
+
+    async def run_impl(
+        self,
+        prompt: str,
+        resume: ResumeToken | None,
+    ) -> anyio.AsyncIterator[Any]:
+        saw_completed = False
+        async for evt in super().run_impl(prompt, resume):
+            if isinstance(evt, CompletedEvent):
+                saw_completed = True
+            yield evt
+
+        if saw_completed or not self.config.fallback_to_text:
+            return
+
+        text = await anyio.to_thread.run_sync(
+            self._run_text_fallback,
+            prompt,
+            resume,
+        )
+        if text is None:
+            return
+        yield CompletedEvent(
+            engine=self.engine,
+            ok=True,
+            answer=text,
+            resume=resume,
+        )
+
+    def _run_text_fallback(self, prompt: str, resume: ResumeToken | None) -> str | None:
+        args = self._build_text_args(prompt, resume)
+        cmd = [self.command(), *args]
+        cwd = get_run_base_dir()
+        proc = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=cwd,
+            text=True,
+        )
+        if proc.returncode != 0:
+            return None
+        output = (proc.stdout or "").strip()
+        if not output:
+            return None
+        return output

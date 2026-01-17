@@ -58,6 +58,7 @@ def _load_config(config: EngineConfig) -> DroidConfig:
         disabled_tools=_get_str_list(config, "disabled_tools"),
         cwd=_get_str(config, "cwd"),
         lsp_framing=_get_bool(config, "lsp_framing", default=True),
+        fallback_to_text=_get_bool(config, "fallback_to_text", default=True),
     )
 
 

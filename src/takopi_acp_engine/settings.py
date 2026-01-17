@@ -14,3 +14,4 @@ class DroidConfig:
     disabled_tools: tuple[str, ...] | None = None
     cwd: str | None = None
     lsp_framing: bool = True
+    fallback_to_text: bool = True
